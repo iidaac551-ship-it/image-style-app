@@ -1,128 +1,99 @@
-# app.py
 import streamlit as st
 from PIL import Image
-import io
+import requests
+from io import BytesIO
 import base64
 
-st.set_page_config(page_title="Fashion Style Studio", layout="wide")
+# -------------------------------
+# 設定
+# -------------------------------
+API_URL = "https://api-inference.huggingface.co/models/CompVis/stable-diffusion-v1-4"
+API_TOKEN = "YOUR_HUGGING_FACE_API_KEY"  # 自分のキーに置き換えてください
 
-# --- 初期状態 ---
+headers = {"Authorization": f"Bearer {API_TOKEN}"}
+
+# -------------------------------
+# サイドバー
+# -------------------------------
+st.sidebar.title("Fashion Studio AI")
+st.sidebar.write("ステップごとに画像を生成できます")
+
+# -------------------------------
+# セッションステート
+# -------------------------------
 if "step" not in st.session_state:
     st.session_state.step = 1
-if "source_img" not in st.session_state:
-    st.session_state.source_img = None
-if "target_img" not in st.session_state:
-    st.session_state.target_img = None
-if "current_img" not in st.session_state:
-    st.session_state.current_img = None
+if "source_image" not in st.session_state:
+    st.session_state.source_image = None
+if "target_image" not in st.session_state:
+    st.session_state.target_image = None
+if "current_image" not in st.session_state:
+    st.session_state.current_image = None
 if "history" not in st.session_state:
     st.session_state.history = []
 
-# --- ユーザー選択肢 ---
-angle_options = [f"角度{i}" for i in range(1, 81)]  # 80パターン
-pose_options = [f"ポーズ{i}" for i in range(1, 81)]
-hair_options = [f"髪型{i}" for i in range(1, 51)]
-hair_color_options = ["黒", "茶", "金", "赤", "ピンク", "青", "緑"]
-expression_options = ["自然体", "笑顔", "クール", "微笑み"]
-brand_options = [f"ブランド{i}" for i in range(1, 101)]
-season_options = ["春", "夏", "秋", "冬"]
-cloth_color_options = ["赤", "青", "緑", "黄", "白", "黒"]
+# -------------------------------
+# ステップごと画面
+# -------------------------------
+def generate_image(prompt, init_image=None):
+    payload = {
+        "inputs": prompt,
+        "options": {"wait_for_model": True},
+    }
+    if init_image:
+        buffered = BytesIO()
+        init_image.save(buffered, format="PNG")
+        img_str = base64.b64encode(buffered.getvalue()).decode("utf-8")
+        payload["inputs"] = {"prompt": prompt, "init_image": img_str, "strength":0.7}
+    
+    response = requests.post(API_URL, headers=headers, json=payload)
+    if response.status_code == 200:
+        result = response.json()
+        # 結果の画像を取得
+        img_data = base64.b64decode(result["data"][0]["image_base64"])
+        return Image.open(BytesIO(img_data))
+    else:
+        st.error(f"生成失敗: {response.status_code}")
+        return None
 
-# --- ヘルパー関数 ---
-def load_image(uploaded_file):
-    if uploaded_file is not None:
-        img = Image.open(uploaded_file).convert("RGBA")
-        return img
-    return None
+st.title("🌸 Fashion Studio AI 🌸")
 
-def add_history(img):
-    if img is not None:
-        st.session_state.history.append(img.copy())
-
-# --- UI ---
-st.title("🎨 Fashion Style Studio")
-
-# ステップ表示
-st.subheader(f"ステップ {st.session_state.step}")
-
-# 画像表示
-if st.session_state.current_img:
-    st.image(st.session_state.current_img, width=300)
-else:
-    st.text("画像をアップロードしてください")
-
-# Undo ボタン
-if st.session_state.history:
-    if st.button("← 1つ戻す（画像）"):
-        st.session_state.current_img = st.session_state.history.pop()
-
-# --- ステップごとの処理 ---
+# ステップ1: 画像アップロード
 if st.session_state.step == 1:
-    uploaded = st.file_uploader("モデル写真をアップロード", type=["png", "jpg", "jpeg"])
+    st.subheader("Step 1: モデル画像をアップロード")
+    uploaded = st.file_uploader("人物画像を選択", type=["png","jpg","jpeg"])
     if uploaded:
-        img = load_image(uploaded)
-        st.session_state.source_img = img
-        st.session_state.current_img = img.copy()
-        st.session_state.history = []
-        st.button("生成開始", on_click=lambda: st.session_state.update(step=2))
+        img = Image.open(uploaded)
+        st.session_state.source_image = img
+        st.session_state.current_image = img
+        st.session_state.step += 1
 
+# ステップ2: 服装画像アップロード
 elif st.session_state.step == 2:
-    uploaded = st.file_uploader("服装画像をアップロード（顔や背景は使わない）", type=["png", "jpg", "jpeg"])
+    st.subheader("Step 2: 服装画像をアップロード")
+    uploaded = st.file_uploader("服装画像を選択", type=["png","jpg","jpeg"])
     if uploaded:
-        img = load_image(uploaded)
-        st.session_state.target_img = img
-        st.button("服装適用", on_click=lambda: st.session_state.update(step=3))
+        img = Image.open(uploaded)
+        st.session_state.target_image = img
+        st.session_state.step += 1
 
+# ステップ3: 画角・ポーズ選択
 elif st.session_state.step == 3:
-    angle = st.selectbox("画角・角度を選択", angle_options)
-    pose = st.selectbox("ポーズを選択", pose_options)
-    custom_req = st.text_input("追加リクエスト（任意）")
+    st.subheader("Step 3: 画角・ポーズ選択")
+    angles = [f"{i}°アングル" for i in range(1,81)]
+    selected_angle = st.selectbox("画角を選択", angles)
+    pose_options = ["正面","斜め上","斜め下","アップ","自撮り風"]  # 必要なら拡張
+    selected_pose = st.selectbox("ポーズを選択", pose_options)
+    prompt_text = st.text_area("リクエスト（任意）","")
     if st.button("生成"):
-        add_history(st.session_state.current_img)
-        # --- AI処理の代替としてここでは画像をそのままコピー ---
-        st.session_state.current_img = st.session_state.current_img.copy()
-        st.session_state.step += 1
+        prompt = f"{selected_pose}, {selected_angle}, {prompt_text}"
+        result = generate_image(prompt, init_image=st.session_state.source_image)
+        if result:
+            st.session_state.history.append(st.session_state.current_image)
+            st.session_state.current_image = result
+            st.image(result, caption="生成結果")
+            if st.button("次のステップ"):
+                st.session_state.step += 1
 
-elif st.session_state.step == 4:
-    hair = st.selectbox("髪型を選択", hair_options)
-    hair_color = st.selectbox("髪色を選択", hair_color_options)
-    custom_req = st.text_input("追加リクエスト（任意）")
-    if st.button("生成"):
-        add_history(st.session_state.current_img)
-        st.session_state.current_img = st.session_state.current_img.copy()
-        st.session_state.step += 1
-
-elif st.session_state.step == 5:
-    expression = st.selectbox("表情を選択", expression_options)
-    custom_req = st.text_input("追加リクエスト（任意）")
-    if st.button("生成"):
-        add_history(st.session_state.current_img)
-        st.session_state.current_img = st.session_state.current_img.copy()
-        st.session_state.step += 1
-
-elif st.session_state.step == 6:
-    brand = st.selectbox("ブランドを選択", brand_options)
-    season = st.selectbox("季節を選択", season_options)
-    custom_req = st.text_input("追加リクエスト（任意）")
-    if st.button("生成"):
-        add_history(st.session_state.current_img)
-        st.session_state.current_img = st.session_state.current_img.copy()
-        st.session_state.step += 1
-
-elif st.session_state.step == 7:
-    cloth_color = st.selectbox("服の色を選択", cloth_color_options)
-    custom_req = st.text_input("追加リクエスト（任意）")
-    if st.button("生成"):
-        add_history(st.session_state.current_img)
-        st.session_state.current_img = st.session_state.current_img.copy()
-        st.session_state.step += 1
-
-# --- 最終画像ダウンロード ---
-if st.session_state.step > 7:
-    st.success("最終画像完成！")
-    buf = io.BytesIO()
-    st.session_state.current_img.save(buf, format="PNG")
-    byte_im = buf.getvalue()
-    b64 = base64.b64encode(byte_im).decode()
-    href = f'<a href="data:file/png;base64,{b64}" download="fashion_studio.png">💾 画像を保存</a>'
-    st.markdown(href, unsafe_allow_html=True)
+# ステップ4以降も同様に追加可能
+# 髪型・髪色、表情、ブランド・季節、服の色など
