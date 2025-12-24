@@ -1,146 +1,92 @@
 import streamlit as st
 from PIL import Image
+import base64
 import io
 
-st.set_page_config(page_title="Fashion Image Studio", layout="wide")
+st.set_page_config(page_title="Fashion Studio", layout="centered")
 
-# --------------------
-# 初期化
-# --------------------
-if "step" not in st.session_state:
-    st.session_state.step = 1
-if "history" not in st.session_state:
+st.title("🎨 Fashion Studio")
+
+# --- ステップ状態管理 ---
+if 'step' not in st.session_state:
+    st.session_state.step = 2  # 画面2から開始
+if 'history' not in st.session_state:
     st.session_state.history = []
-if "image" not in st.session_state:
-    st.session_state.image = None
 
-# --------------------
-# ユーティリティ
-# --------------------
-def save_history():
-    if st.session_state.image:
-        st.session_state.history.append(st.session_state.image.copy())
+# --- 画像アップロード ---
+source_image = st.file_uploader("モデル写真をアップロード", type=['png', 'jpg', 'jpeg'], key='source')
+target_image = st.file_uploader("服装写真をアップロード", type=['png', 'jpg', 'jpeg'], key='target')
 
-def undo():
-    if st.session_state.history:
-        st.session_state.image = st.session_state.history.pop()
+def pil_to_bytes(img):
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    byte_im = buf.getvalue()
+    return byte_im
 
-# --------------------
-# UI
-# --------------------
-st.title("🧥 Fashion Image Studio（簡易版）")
+def save_history(img):
+    st.session_state.history.append(img)
 
-col_main, col_ctrl = st.columns([3, 2])
+# --- プレビュー ---
+if source_image:
+    source_pil = Image.open(source_image)
+    st.image(source_pil, caption="モデル画像", use_column_width=True)
 
-with col_main:
-    st.subheader("🖼 プレビュー")
+if target_image:
+    target_pil = Image.open(target_image)
+    st.image(target_pil, caption="服装画像", use_column_width=True)
 
-    if st.session_state.image:
-        st.image(st.session_state.image, use_column_width=True)
-    else:
-        st.info("画像をアップロードしてください")
+# --- ステップ 3: 画角・ポーズ ---
+if st.session_state.step == 3:
+    st.subheader("画角・ポーズ選択")
+    pose_options = [f"ポーズ{i+1}" for i in range(80)]  # 80パターン
+    selected_pose = st.selectbox("ポーズを選択", pose_options)
+    if st.button("次へ"):
+        st.session_state.step += 1
 
-    col_a, col_b = st.columns(2)
-    with col_a:
-        if st.button("⬅ 画像を1つ戻す"):
-            undo()
-    with col_b:
-        if st.button("⬅ ステップを戻す"):
-            if st.session_state.step > 1:
-                st.session_state.step -= 1
+# --- ステップ 4: 髪型・髪色 ---
+if st.session_state.step == 4:
+    st.subheader("髪型・髪色")
+    hair_options = [f"髪型{i+1}" for i in range(50)]  # 50パターン
+    hair_color_options = ["黒", "茶", "金", "赤", "青", "紫", "ピンク"]
+    selected_hair = st.selectbox("髪型を選択", hair_options)
+    selected_color = st.selectbox("髪色を選択", hair_color_options)
+    if st.button("次へ"):
+        st.session_state.step += 1
 
-with col_ctrl:
-    st.subheader(f"STEP {st.session_state.step}")
+# --- ステップ 5: 表情 ---
+if st.session_state.step == 5:
+    st.subheader("表情")
+    expression_options = ["自然体", "笑顔", "微笑み", "クール", "自信", "アンニュイ"]
+    selected_expression = st.selectbox("表情を選択", expression_options)
+    if st.button("次へ"):
+        st.session_state.step += 1
 
-    # --------------------
-    # STEP 1：画像アップロード
-    # --------------------
-    if st.session_state.step == 1:
-        img1 = st.file_uploader("① モデル画像（顔を維持・服は消去想定）", type=["png", "jpg", "jpeg"])
-        img2 = st.file_uploader("② 服装画像（服のみ使用）", type=["png", "jpg", "jpeg"])
+# --- ステップ 6: ブランド・季節 ---
+if st.session_state.step == 6:
+    st.subheader("ブランド・季節")
+    brand_options = [f"ブランド{i+1}" for i in range(100)]
+    selected_brand = st.selectbox("ブランドを選択", brand_options)
+    season_options = ["春", "夏", "秋", "冬"]
+    selected_season = st.selectbox("季節を選択", season_options)
+    if st.button("次へ"):
+        st.session_state.step += 1
 
-        if img1:
-            image = Image.open(img1).convert("RGB")
-            st.session_state.image = image
-            save_history()
+# --- ステップ 7: 服の色・デザイン ---
+if st.session_state.step == 7:
+    st.subheader("服の色・デザイン")
+    clothing_colors = ["赤", "青", "黒", "白", "ピンク", "黄色", "緑", "オリジナル"]
+    selected_clothing = st.selectbox("服の色を選択", clothing_colors)
+    if st.button("生成する"):
+        st.success("ここでAI生成処理を呼び出します。")
 
-        if st.button("次へ ➡"):
-            st.session_state.step = 2
+# --- Magic Request（自由入力） ---
+st.text_area("Magic Request（自由リクエスト）", placeholder="例：背景を明るく、顔はそのまま...")
 
-    # --------------------
-    # STEP 2：ポーズ・画角
-    # --------------------
-    if st.session_state.step == 2:
-        pose = st.selectbox(
-            "ポーズ・画角",
-            [
-                "正面", "自撮り風", "上から", "下から", "アップ",
-                "斜め45度", "真横", "振り向き",
-                "バストアップ", "ウエストアップ", "全身"
-            ]
-        )
-        free_pose = st.text_area("自由入力（ポーズ・画角）")
+# --- 戻る機能 ---
+if st.session_state.step > 2:
+    if st.button("一つ戻る"):
+        st.session_state.step -= 1
+        if st.session_state.history:
+            st.session_state.history.pop()
 
-        if st.button("次へ ➡"):
-            save_history()
-            st.session_state.step = 3
 
-    # --------------------
-    # STEP 3：髪型・髪色
-    # --------------------
-    if st.session_state.step == 3:
-        hair = st.selectbox(
-            "髪型",
-            [
-                "そのまま", "ショート", "ボブ", "ロング",
-                "ウェーブ", "ポニーテール", "お団子",
-                "ハーフアップ", "前髪あり", "前髪なし"
-            ]
-        )
-        hair_color = st.selectbox(
-            "髪色",
-            ["そのまま", "ブラック", "ブラウン", "ベージュ", "アッシュ", "ピンク", "シルバー"]
-        )
-        free_hair = st.text_area("自由入力（髪型・髪色）")
-
-        if st.button("次へ ➡"):
-            save_history()
-            st.session_state.step = 4
-
-    # --------------------
-    # STEP 4：ブランド・季節
-    # --------------------
-    if st.session_state.step == 4:
-        season = st.selectbox("季節", ["春", "夏", "秋", "冬"])
-
-        brand = st.selectbox(
-            "ブランド（女性向け）",
-            [
-                "CHANEL", "DIOR", "GUCCI", "PRADA", "CELINE",
-                "LOEWE", "SAINT LAURENT", "FENDI", "MIU MIU",
-                "SNIDEL", "FRAY I.D", "Mila Owen", "ZARA",
-                "Ameri", "CLANE", "Mame Kurogouchi"
-            ]
-        )
-
-        free_brand = st.text_area("自由入力（ブランド・世界観）")
-
-        if st.button("次へ ➡"):
-            save_history()
-            st.session_state.step = 5
-
-    # --------------------
-    # STEP 5：最終指示
-    # --------------------
-    if st.session_state.step == 5:
-        final_request = st.text_area(
-            "最終リクエスト（顔は維持・服のみ反映など自由に）",
-            height=120
-        )
-
-        st.success("この画面構成で Gemini / API に渡す想定です")
-
-        if st.button("完了 🎉"):
-            st.balloons()
-
-st.caption("※ このUIは『選択 → 自由入力』を前提にしたベース構成です")
